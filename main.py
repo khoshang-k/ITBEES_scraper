@@ -10,41 +10,56 @@ TICKERS = {
     "Nifty_IT": "^CNXIT",
     "TCS": "TCS.NS",
     "Infosys": "INFY.NS",
-    "Nasdaq_Fut": "NQ=F",  # Global Sentiment
-    "USD_INR": "INR=X",    # Currency
-    "India_VIX": "^INDIAVIX" # Volatility
+    "Nasdaq_Fut": "NQ=F",
+    "USD_INR": "INR=X",
+    "India_VIX": "^INDIAVIX"
 }
 
 def fetch_and_align_data():
-    print("🚀 Fetching last 7 days of 1-minute data...")
-    df_list = []
+    print("Fetching last 7 days of 1-minute data...")
+    
+    # CHANGED: Use a dictionary for explicit column naming
+    data_dict = {} 
     
     for name, symbol in TICKERS.items():
         try:
-            # Download 7 days of 1m data
+            # Download data
             ticker_df = yf.download(symbol, period="7d", interval="1m", progress=False)
             
             if ticker_df.empty:
                 print(f"Warning: No data found for {symbol}")
                 continue
             
-            # Handle MultiIndex columns (common in new yfinance versions)
-            if isinstance(ticker_df.columns, pd.MultiIndex):
+            # Safe extraction of 'Close' column
+            # yfinance structure varies (MultiIndex vs Single Index), this handles both
+            if 'Close' in ticker_df.columns:
                 close_col = ticker_df['Close']
             else:
-                close_col = ticker_df['Close']
-                
-            close_col.name = f"{name}_Close"
-            df_list.append(close_col)
+                # Attempt to handle MultiIndex (e.g. ('Close', 'ITBEES.NS'))
+                close_col = ticker_df.iloc[:, 0] # Fallback: take the first column
+
+            # Force it to be a Series (sometimes it stays as a 1-column DataFrame)
+            if isinstance(close_col, pd.DataFrame):
+                close_col = close_col.iloc[:, 0]
+            
+            # Add to dictionary with the EXACT name we want
+            data_dict[f"{name}_Close"] = close_col
             
         except Exception as e:
             print(f"Error fetching {symbol}: {e}")
 
-    if not df_list:
+    if not data_dict:
+        print("No data fetched.")
         return None
 
-    # Merge all into one DataFrame based on timestamp
-    combined_df = pd.concat(df_list, axis=1)
+    # Merge: keys become column names automatically
+    combined_df = pd.concat(data_dict, axis=1)
+    
+    # --- CRITICAL CHECK ---
+    if 'Target_Close' not in combined_df.columns:
+        print("Error: Target (ITBEES) data is missing. Cannot proceed.")
+        print(f"Available columns: {list(combined_df.columns)}")
+        return None
     
     # --- CLEANING & ALIGNMENT ---
     combined_df.ffill(inplace=True)
@@ -55,7 +70,7 @@ def fetch_and_align_data():
         combined_df.index = combined_df.index.tz_localize('UTC')
     combined_df.index = combined_df.index.tz_convert('Asia/Kolkata')
     
-    # Filter for Indian Market Hours (09:15 to 15:30)
+    # Filter for Indian Market Hours
     combined_df = combined_df.between_time('09:15', '15:30')
     
     return combined_df
@@ -71,7 +86,6 @@ def update_csv(new_data):
         print(f"Created new dataset: {FILE_NAME} with {rows_appended} rows.")
     else:
         existing_df = pd.read_csv(FILE_NAME, index_col=0, parse_dates=True)
-        # Ensure existing index is timezone-aware
         if existing_df.index.tz is None:
              existing_df.index = existing_df.index.tz_localize('Asia/Kolkata')
         
@@ -99,24 +113,25 @@ if __name__ == "__main__":
         if df is not None and not df.empty:
             added, total = update_csv(df)
             status = "Success"
+        elif df is None:
+            status = "Fetch Failed"
         else:
-            status = "No Data Fetched"
-            # Try to get existing total count even if fetch failed
+            status = "No Data"
+
+            # Count existing if fetch yielded empty (but valid) df
             if os.path.exists(FILE_NAME):
                  with open(FILE_NAME) as f:
                      total = sum(1 for line in f) - 1
             
     except Exception as e:
         print(f"CRITICAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
         status = "Failed"
 
-    # --- WRITE TO GITHUB OUTPUT ---
-    # This is critical for the YAML file to read the results
+    # Write to GitHub Output
     if "GITHUB_OUTPUT" in os.environ:
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
             f.write(f"status={status}\n")
             f.write(f"added={added}\n")
             f.write(f"total={total}\n")
-    else:
-        # For local testing
-        print(f"\n[LOCAL DEBUG] Status: {status}, Added: {added}, Total: {total}")
