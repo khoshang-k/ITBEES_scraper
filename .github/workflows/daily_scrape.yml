@@ -25,20 +25,21 @@ jobs:
         run: pip install pandas yfinance
 
       - name: Run Data Script
-        id: run_script  # We give this step an ID to reference its outputs later
-        run: python collect_data.py
+        id: run_script
+        run: python main.py
 
       - name: Commit and Push Data
-        # Only run this if the script was successful
+        # Check if status was Success before committing
         if: steps.run_script.outputs.status == 'Success'
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
           git add itbees_master_dataset.csv
-          # Commit only if there are changes
+          # The logic below commits only if changes exist, otherwise it exits gracefully
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: ${{ steps.run_script.outputs.added }} rows added" && git push)
 
       - name: Send Status Email
+        if: always() # Send email even if script fails
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
@@ -46,7 +47,6 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "Stock Data: ${{ steps.run_script.outputs.status }}"
-          # The body uses the variables output by your Python script
           body: |
             Daily Data Collection Report:
             -----------------------------
