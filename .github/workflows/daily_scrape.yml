@@ -1,20 +1,20 @@
-name: Daily Stock Scraper
-
+name: Daily Stock Data Collector
 on:
   schedule:
-    # 10:30 UTC = 4:00 PM IST
-    - cron: '30 10 * * *'
-  workflow_dispatch: # manual testing
+    - cron: '30 23 * * 1-5'
+  # Also allow manual run button on GitHub
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  scrape:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write  
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -22,15 +22,17 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: pip install pandas yfinance
+        run: |
+          pip install pandas yfinance
 
-      - name: Run scraper
+      - name: Run Data Collection Script
         run: python main.py
 
-      - name: Commit and Push
+      - name: Commit and Push Data
         run: |
-          git config --global user.name "GitHub Action Bot"
-          git config --global user.email "actions@github.com"
-          git add itbees_data.csv || echo "No file to add"
-          git commit -m "Auto-update stock data" || echo "No changes to commit"
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add itbees_master_dataset.csv
+          # Only commit if the file has changed (prevents errors if no new data)
+          git commit -m "Auto-update stock data [skip ci]" || exit 0
           git push
