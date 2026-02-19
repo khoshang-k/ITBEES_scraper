@@ -1,17 +1,17 @@
 name: Daily Stock Data Collector
+
 on:
   schedule:
-    - cron: '30 23 * * 1-5'
-  # Also allow manual run button on GitHub
+    - cron: '30 23 * * 1-5' # Runs Mon-Fri at ~5:00 AM IST
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  collect-and-email:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,17 +22,38 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: |
-          pip install pandas yfinance
+        run: pip install pandas yfinance
 
-      - name: Run Data Collection Script
-        run: python main.py
+      - name: Run Data Script
+        id: run_script  # We give this step an ID to reference its outputs later
+        run: python collect_data.py
 
       - name: Commit and Push Data
+        # Only run this if the script was successful
+        if: steps.run_script.outputs.status == 'Success'
         run: |
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
           git add itbees_master_dataset.csv
-          # Only commit if the file has changed (prevents errors if no new data)
-          git commit -m "Auto-update stock data [skip ci]" || exit 0
-          git push
+          # Commit only if there are changes
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: ${{ steps.run_script.outputs.added }} rows added" && git push)
+
+      - name: Send Status Email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Stock Data: ${{ steps.run_script.outputs.status }}"
+          # The body uses the variables output by your Python script
+          body: |
+            Daily Data Collection Report:
+            -----------------------------
+            Status: ${{ steps.run_script.outputs.status }}
+            Rows Appended: ${{ steps.run_script.outputs.added }}
+            Total Dataset Size: ${{ steps.run_script.outputs.total }} rows
+            
+            Check the repo for the updated CSV.
+          to: your-email@gmail.com
+          from: GitHub Actions
