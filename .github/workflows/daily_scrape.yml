@@ -55,5 +55,5 @@ jobs:
             Total Dataset Size: ${{ steps.run_script.outputs.total }} rows
             
             Check the repo for the updated CSV.
-          to: your-email@gmail.com
+          to: ${{ secrets.MAIL_USERNAME }}
           from: GitHub Actions
