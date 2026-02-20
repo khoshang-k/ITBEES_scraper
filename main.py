@@ -71,7 +71,7 @@ def fetch_and_align_data():
     combined_df.index = combined_df.index.tz_convert('Asia/Kolkata')
     
     # Filter for Indian Market Hours
-    combined_df = combined_df.between_time('09:15', '15:30')
+    combined_df = combined_df.between_time('09:00', '15:30')
     
     return combined_df
 
